@@ -66,7 +66,7 @@ class ArangoGraphBackend:
             f"FOR vuln IN {self.config.vulnerability_collection} "
             "FILTER vuln._id == edge._to "
             "LET asset_key = PARSE_IDENTIFIER(edge._from).key "
-            "RETURN {{asset_key: asset_key, vulnerability: vuln}}"
+            "RETURN {asset_key: asset_key, vulnerability: vuln}"
         )
         context: Dict[str, Dict[str, Any]] = {}
         for row in self.db.aql.execute(query, bind_vars={"from_ids": from_ids}):

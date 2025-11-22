@@ -67,6 +67,8 @@ class ExposureGraphLoader:
         assets.add_hash_index(fields=["type"], unique=False, sparse=True)
         edges = self._ensure_collection(self.config.supply_chain_collection, edge=True)
         edges.add_hash_index(fields=["_from", "_to"], unique=True, sparse=False)
+        self._ensure_collection(self.config.vulnerability_collection)
+        self._ensure_collection(self.config.vulnerability_edge_collection, edge=True)
 
     def load_assets(self) -> List[dict]:
         """Read GeoParquet, compute H3 indices, and prepare payloads."""

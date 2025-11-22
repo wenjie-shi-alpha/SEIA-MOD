@@ -1,5 +1,6 @@
 # Core data virtualization
-kerchunk>=0.5.2
+kerchunk>=0.2.9
+cfgrib>=0.9.12.0
 xarray>=2024.6.0
 zarr>=2.17.0
 fsspec>=2024.6.0

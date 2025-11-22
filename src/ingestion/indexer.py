@@ -64,7 +64,13 @@ class WeatherCubeIndexer:
         if not refs:
             raise ValueError("No reference manifests were produced; aborting consolidation.")
         logger.info("Consolidating %d reference files", len(refs))
-        payloads = [json.loads(path.read_text(encoding="utf-8")) for path in refs]
+        raw_payloads = [json.loads(path.read_text(encoding="utf-8")) for path in refs]
+        payloads = []
+        for payload in raw_payloads:
+            if isinstance(payload, list):
+                payloads.extend(payload)
+            else:
+                payloads.append(payload)
         translator = MultiZarrToZarr(
             payloads,
             remote_protocol=self.config.remote_protocol,
