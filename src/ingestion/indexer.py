@@ -1,9 +1,18 @@
 """Kerchunk-based GRIB2 indexer for weather cube virtualization."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import logging
+from dataclasses import dataclass, field
+import glob
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Sequence
+
+import fsspec
+from kerchunk.combine import MultiZarrToZarr
+from kerchunk.grib2 import scan_grib
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -12,9 +21,14 @@ class WeatherCubeIndexerConfig:
 
     source_glob: str
     output_dir: Path
-    s3_bucket: str
+    s3_bucket: str | None = None
     s3_prefix: str = "weather/indexes"
     storage_options: dict | None = None
+    object_store_options: dict | None = None
+    inline_threshold: int = 300
+    remote_protocol: str = "file"
+    concat_dims: Sequence[str] = field(default_factory=lambda: ["time"])
+    identical_dims: Sequence[str] | None = None
 
 
 class WeatherCubeIndexer:
@@ -27,24 +41,53 @@ class WeatherCubeIndexer:
 
     def scan_sources(self) -> List[Path]:
         """Return a sorted list of GRIB2 files to index."""
-        return sorted(Path().glob(self.config.source_glob))
+        sources = sorted(Path(path) for path in glob.glob(self.config.source_glob))
+        if not sources:
+            logger.warning("No GRIB2 files matched pattern %s", self.config.source_glob)
+        return sources
 
     def build_single_reference(self, grib_path: Path) -> Path:
-        """Placeholder for kerchunk.grib2.scan_grib execution."""
+        """Run kerchunk.grib2.scan_grib for a single GRIB2 file."""
+        logger.info("Scanning %s", grib_path)
+        reference = scan_grib(
+            grib_path.as_posix(),
+            storage_options=self.config.storage_options or {},
+            inline_threshold=self.config.inline_threshold,
+        )
         target = self.output_dir / f"{grib_path.stem}.json"
-        target.write_text("{}\n", encoding="utf-8")
+        target.write_text(json.dumps(reference), encoding="utf-8")
         return target
 
     def consolidate_references(self, refs: Iterable[Path]) -> Path:
-        """Placeholder for kerchunk.combine.MultiZarrToZarr output."""
-        consolidated = self.output_dir / "consolidated.json"
-        consolidated.write_text("{}\n", encoding="utf-8")
-        return consolidated
+        """Combine individual Kerchunk manifests via MultiZarrToZarr."""
+        refs = list(refs)
+        if not refs:
+            raise ValueError("No reference manifests were produced; aborting consolidation.")
+        logger.info("Consolidating %d reference files", len(refs))
+        payloads = [json.loads(path.read_text(encoding="utf-8")) for path in refs]
+        translator = MultiZarrToZarr(
+            payloads,
+            remote_protocol=self.config.remote_protocol,
+            remote_options=self.config.storage_options or {},
+            concat_dims=list(self.config.concat_dims),
+            identical_dims=list(self.config.identical_dims) if self.config.identical_dims else None,
+        )
+        consolidated = translator.translate()
+        target = self.output_dir / "consolidated.json"
+        target.write_text(json.dumps(consolidated), encoding="utf-8")
+        return target
 
-    def push_to_object_store(self, artifact: Path) -> None:
-        """Placeholder for uploading the consolidated manifest to MinIO/S3."""
-        # TODO: integrate fsspec / boto3 upload logic
-        _ = (artifact, self.config)
+    def push_to_object_store(self, artifact: Path) -> str | None:
+        """Upload the consolidated manifest to MinIO/S3 via fsspec."""
+        if not self.config.s3_bucket:
+            logger.debug("s3_bucket not configured; skipping upload for %s", artifact)
+            return None
+        fs = fsspec.filesystem("s3", **(self.config.object_store_options or {}))
+        key = f"{self.config.s3_prefix.rstrip('/')}/{artifact.name}"
+        remote_path = f"{self.config.s3_bucket}/{key}"
+        logger.info("Uploading %s to s3://%s", artifact, remote_path)
+        fs.put_file(str(artifact), remote_path)
+        return f"s3://{remote_path}"
 
     def run(self) -> Path:
         """Execute the end-to-end indexing pipeline."""
