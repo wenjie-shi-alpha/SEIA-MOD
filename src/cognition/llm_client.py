@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import requests
 
@@ -28,10 +28,43 @@ class LLMClient:
 
     def generate(self, prompt: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """Call the configured LLM endpoint and normalize the JSON response."""
-        headers = {
+        headers = self._build_headers()
+        messages = self._build_messages(prompt, payload)
+        try:
+            data = self._dispatch_request(headers, messages)
+        except requests.RequestException as exc:
+            detail = getattr(exc.response, "text", "") if hasattr(exc, "response") else ""
+            raise RuntimeError(f"LLM API call failed: {detail}") from exc
+        text = self._extract_text(data)
+        parsed = self._parse_json(text)
+        return {"text": text, "json": parsed}
+
+    def _dispatch_request(self, headers: Dict[str, str], messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        endpoint = self.config.endpoint.rstrip("/")
+        if endpoint.endswith("responses"):
+            body = self._responses_body(messages)
+            response = self._post(endpoint, headers, body)
+            response.raise_for_status()
+            return response.json()
+        body = {"model": self.config.model, "messages": messages, "temperature": 0.2}
+        response = self._post(endpoint, headers, body, raise_for_status=False)
+        if response.status_code == 400:
+            # Fallback to responses API for models that no longer support chat completions.
+            fallback_endpoint = self._responses_endpoint(endpoint)
+            body = self._responses_body(messages)
+            fallback = self._post(fallback_endpoint, headers, body)
+            fallback.raise_for_status()
+            return fallback.json()
+        response.raise_for_status()
+        return response.json()
+
+    def _build_headers(self) -> Dict[str, str]:
+        return {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
         }
+
+    def _build_messages(self, prompt: str, payload: Dict[str, Any] | None) -> List[Dict[str, Any]]:
         messages = [
             {
                 "role": "system",
@@ -47,21 +80,44 @@ class LLMClient:
                     "content": f"Additional structured context: {payload_json}",
                 }
             )
-        body = {"model": self.config.model, "messages": messages, "temperature": 0.2}
-        try:
-            response = self.session.post(
-                self.config.endpoint,
-                headers=headers,
-                json=body,
-                timeout=self.config.timeout,
-            )
+        return messages
+
+    def _responses_body(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return {
+            "model": self.config.model,
+            "input": [
+                {
+                    "role": message["role"],
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": str(message.get("content", "")),
+                        }
+                    ],
+                }
+                for message in messages
+            ],
+        }
+
+    def _post(
+        self,
+        endpoint: str,
+        headers: Dict[str, str],
+        body: Dict[str, Any],
+        raise_for_status: bool = True,
+    ) -> requests.Response:
+        response = self.session.post(endpoint, headers=headers, json=body, timeout=self.config.timeout)
+        if raise_for_status:
             response.raise_for_status()
-        except requests.RequestException as exc:
-            raise RuntimeError("LLM API call failed") from exc
-        data = response.json()
-        text = self._extract_text(data)
-        parsed = self._parse_json(text)
-        return {"text": text, "json": parsed}
+        return response
+
+    @staticmethod
+    def _responses_endpoint(endpoint: str) -> str:
+        base = endpoint.rstrip("/")
+        if base.endswith("chat/completions"):
+            prefix = base[: -len("chat/completions")].rstrip("/")
+            return f"{prefix}/responses"
+        return base
 
     def _extract_text(self, payload: Dict[str, Any]) -> str:
         """Normalize text content for both Chat Completions and Responses APIs."""
