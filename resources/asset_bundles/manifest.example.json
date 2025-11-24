@@ -1,0 +1,21 @@
+{
+  "provider": "external_asset_hub",
+  "bundles": [
+    {
+      "bundle_id": "jjj_power_assets",
+      "version": "v20240218",
+      "region": "jingjinji",
+      "asset_types": ["thermal_power", "grid_node", "logistics_hub"],
+      "hazard_types": ["heatwave", "storm_surge"],
+      "asset_count": 1284,
+      "geo_parquet": "s3://seia-asset-bundles/jjj/v20240218/assets.parquet",
+      "vulnerability_profiles": "s3://seia-asset-bundles/jjj/v20240218/vulnerability.json",
+      "checksum": "sha256:0d6d1ad5...",
+      "metadata": {
+        "source_bundle": "catalog://jjj_heatwave_2024",
+        "prepared_by": "external-team",
+        "prepared_at": "2024-02-18T08:15:00Z"
+      }
+    }
+  ]
+}

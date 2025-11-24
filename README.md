@@ -45,6 +45,11 @@ SEIA-Mod/
 - `indexer.py` (`WeatherCubeIndexer`)：使用 Kerchunk 的 `scan_grib` + `MultiZarrToZarr` 组合生成 GRIB2 引用文件（Reference JSON），并可选上传至 MinIO/S3。
 - `vectorizer.py` (`VectorAssetVectorizer`)：用 GeoPandas + DuckDB 读取 Shapefile/GeoJSON，按 SQL 过滤仿真区域后输出为 GeoParquet，便于下游列式扫描。
 
+#### 外部承灾体数据接口
+- 如果不希望在本仓直接构建承灾体数据，可在独立“Asset Hub”项目中完成爬虫/清洗，再通过 `resources/asset_bundles/manifest*.json` 发布资产包。
+- `src/ingestion/bundle_interface.py` 提供 `AssetBundleProvider` 协议与 `LocalBundleProvider` 默认实现，`docs/external_asset_pipeline.md` 详细描述职责拆分、manifest schema 以及如何在本仓消费外部数据。
+- 建议在 `.env` 中配置 `ASSET_BUNDLE_MANIFEST` 与 `ASSET_BUNDLE_ROOT`，由后续脚本读取并触发 `ExposureGraphLoader`，实现框架与数据管线解耦。
+
 ### L2 时空承灾图谱 (`src/graph/`)
 
 - `loader.py` (`ExposureGraphLoader`)：读取 GeoParquet，转换 H3 指标，批量写入 ArangoDB `Assets` 集合，并构建 `SupplyChain`/`HasVulnerability` 边；提供 `impacted_assets_aql` 供上层查询。
