@@ -26,4 +26,8 @@
 
 ## 下一步工作
 1. **前端可视化**：使用 Vite/Vue3 初始化项目，集成 Deck.gl/WebGPU，建立与 WebSocket 的二进制协议对接。
-2. **验证与部署**：按照指南的阶段性 checklist 运行 Docker 基座、回归测试、性能验证，并准备 CI/CD 与文档。
+2. **脆弱曲线方法论**：
+   - 在承灾体层建立跨行业统一的 `asset_type/industry/exposure_profile` → `vulnerability_profile` 映射规范，明确每类资产的曲线槽位（不仅限于电力）。
+   - 设计曲线构建流程：数据源（行业标准、历史事件、遥测/遥感、物理仿真）→ 形式选择（sigmoid、分段线性、lognormal 等）→ 拟合/校验 → 版本化与溯源字段。
+   - 产出可复用的数据管线（脚本 + JSON/DB schema），将校准结果同步至 `resources/vulnerability/*.json` 与 ArangoDB `Vulnerability` 集合，供仿真路线与曲线直算路线共用。
+3. **验证与部署**：按照指南的阶段性 checklist 运行 Docker 基座、回归测试、性能验证，并准备 CI/CD 与文档。

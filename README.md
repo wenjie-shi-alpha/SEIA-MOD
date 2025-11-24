@@ -56,6 +56,10 @@ SEIA-Mod/
 3. `agents/hybrid_agent.py`：实现 `HybridAgent`，包含脆弱性曲线计算、产能/库存守恒逻辑、基于 LLM 的认知触发。
 4. `model.py`：`HybridSimulationModel` 负责载入子图、执行 tick 循环、汇总宏观指标，支持自定义 LLM 客户端与多步骤运行。
 
+> **两种核心计算路线**
+> - **仿真路线**：完整走 “事件认知 → DynamicMapper → Mesa/LLM 混合仿真”，适合刻画多 tick 行为与认知策略。
+> - **脆弱曲线直算路线**：在已有 `vulnerability_type` 标签的承灾体层基础上，直接用曲线求损毁率（无需 Mesa）。`resources/vulnerability/*.json` 提供曲线库，`scripts/run_heatwave_impact.py` 展示了“高温事件 → 曲线评估 → 供应链折算”的端到端范式。
+
 ### L4 高频交互 (`src/server/`)
 
 - `socket_server.py`：FastAPI 应用，包含
