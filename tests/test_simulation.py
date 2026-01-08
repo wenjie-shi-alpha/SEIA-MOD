@@ -4,10 +4,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+import numpy as np
 import pytest
+import xarray as xr
 
 from src.cognition.llm_client import LLMClient, LLMClientConfig
-from src.simulation.meteo_cognition import MeteoCognitionConfig, MeteoCognitionPipeline
+from src.simulation.meteo_cognition import (
+    MeteoCognitionConfig,
+    MeteoCognitionPipeline,
+    PrithviWxCConfig,
+    PrithviWxCDownscaler,
+    SAMGeoSegmenter,
+    SAMGeoSegmenterConfig,
+)
 from src.simulation.mapper import DynamicMapper, MapperConfig, GraphBackendProtocol
 from src.simulation.model import HybridSimulationModel, SimulationConfig
 
@@ -27,6 +36,33 @@ class StubLLMClient(LLMClient):
                 "action": "panic_buy",
             }
         }
+
+
+def _synthetic_dataset() -> xr.Dataset:
+    lat = np.linspace(39.7, 40.1, 4)
+    lon = np.linspace(116.1, 116.5, 4)
+    grid = np.linspace(0.1, 0.95, 16).reshape(4, 4)
+    return xr.Dataset({"precip": (("lat", "lon"), grid)}, coords={"lat": lat, "lon": lon})
+
+
+def test_prithvi_downscaler_local_interp_expands_resolution():
+    dataset = _synthetic_dataset()
+    downscaler = PrithviWxCDownscaler(PrithviWxCConfig(target_resolution_km=5.0))
+    hi_res = downscaler.infer(dataset)
+    assert isinstance(hi_res, xr.Dataset)
+    assert hi_res.dims["lat"] >= dataset.dims["lat"]
+    assert hi_res.dims["lon"] >= dataset.dims["lon"]
+
+
+def test_samgeo_segmenter_generates_h3_coverage():
+    dataset = _synthetic_dataset()
+    segmenter = SAMGeoSegmenter(
+        SAMGeoSegmenterConfig(intensity_field="precip", threshold=0.5, h3_resolution=4)
+    )
+    result = segmenter.segment(dataset)
+    assert "stats" in result
+    assert result["stats"]["max_intensity"] > 0
+    assert result["h3_coverage"]
 
 
 def test_meteo_cognition_pipeline_emits_event():
